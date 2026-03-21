@@ -1,1 +1,6 @@
-
+_SourceCategory= api/data
+| json field = _raw "response_time", "endpoint"
+| where endpoint = "/api/data" and response_time > 3000 
+| timeslice 10m
+| count as slow_requests by timeslice
+| where slow_requests > 5 
