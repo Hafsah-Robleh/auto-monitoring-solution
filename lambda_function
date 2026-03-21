@@ -1,1 +1,17 @@
+import os, boto3 
+ec2= boto3.client("ec2")
+sns = boto3.client("sns")
 
+INSTANCE_ID = os.environ("i-0510c100a8706cd17")
+SNS_ARN = os.environ("arn:aws:sns:us-east-2:265145884108:monitoring-sns")
+
+def lambda_handler(event,context):
+    print("Received Event", event)
+
+    # restart instance 
+    ec2.reboot_instances(InstanceIDS=[Instance_ID])
+    print(f"Rebooted Instance:{Instance_ID}")
+
+    msg = (f"EC2 instance {INSTANCE_ID} rebooted due to a Sumo Logic alert.")
+    sns.publish(TopicArn=SNS_TOPIC_ARN, Message=msg)
+    print("SNS notification sent.")
