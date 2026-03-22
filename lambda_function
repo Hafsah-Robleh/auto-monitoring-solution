@@ -1,17 +1,31 @@
-import os, boto3 
-ec2= boto3.client("ec2")
-sns = boto3.client("sns")
+import os
+import boto3
+import json
 
-INSTANCE_ID = os.environ("i-0510c100a8706cd17")
-SNS_ARN = os.environ("arn:aws:sns:us-east-2:265145884108:monitoring-sns")
+ec2 = boto3.client("ec2", region_name="us-east-2")
+sns = boto3.client("sns", region_name="us-east-2")
 
-def lambda_handler(event,context):
-    print("Received Event", event)
+# environment variables (set these in Lambda settings)
+INSTANCE_ID = os.environ["INSTANCE_ID"]
+SNS_TOPIC_ARN = os.environ["SNS_TOPIC_ARN"]
 
-    # restart instance 
-    ec2.reboot_instances(InstanceIDS=[Instance_ID])
-    print(f"Rebooted Instance:{Instance_ID}")
+def lambda_handler(event, context):
+    print("Received Event:", event)
 
-    msg = (f"EC2 instance {INSTANCE_ID} rebooted due to a Sumo Logic alert.")
-    sns.publish(TopicArn=SNS_TOPIC_ARN, Message=msg)
+    # reboot EC2 instance
+    ec2.reboot_instances(InstanceIds=[INSTANCE_ID])
+    print(f"Rebooted Instance: {INSTANCE_ID}")
+
+    # send SNS notification
+    message = f"EC2 instance {INSTANCE_ID} rebooted due to a Sumo Logic alert."
+    sns.publish(
+        TopicArn=SNS_TOPIC_ARN,
+        Message=message
+    )
     print("SNS notification sent.")
+
+    return {
+    "statusCode": 200,
+    "headers": {"Content-Type": "application/json"},
+    "body": json.dumps({"message": "EC2 restarted"})
+}
