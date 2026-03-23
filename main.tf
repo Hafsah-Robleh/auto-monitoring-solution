@@ -4,36 +4,38 @@
 
 # ---------------- EC2 ----------------
 resource "aws_instance" "app" {
-  ami           = "ami-0abcdef1234567890" # replace with real AMI
+  ami           = "ami-0b0b78dcacbab728f"   
   instance_type = "t2.micro"
 
   tags = {
-    Name = "api-server"
+    Name = "existing-ec2"
   }
 }
 
 # ---------------- SNS ----------------
 resource "aws_sns_topic" "alerts" {
-  name = "sumo-alerts"
+  name = "monitoring-sns"
 }
 
-# ---------------- IAM ROLE ----------------
-resource "aws_iam_role" "lambda_exec" {
-  name = "lambda_execution_role"
+# ---------------- IAM ROLE (for Lambda) ----------------
+resource "aws_iam_role" "lambda_role" {
+  name = "lambda-existing-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
       Effect = "Allow",
-      Principal = { Service = "lambda.amazonaws.com" },
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      },
       Action = "sts:AssumeRole"
     }]
   })
 }
 
-# ---------------- IAM POLICY ----------------
+# Least privilege policy
 resource "aws_iam_role_policy" "lambda_policy" {
-  role = aws_iam_role.lambda_exec.id
+  role = aws_iam_role.lambda_role.id
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -45,45 +47,31 @@ resource "aws_iam_role_policy" "lambda_policy" {
       },
       {
         Effect = "Allow",
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ],
+        Action = ["sns:Publish"],
+        Resource = "arn:aws:sns:us-east-2:265145884108:monitoring-sns"
+      },
+      {
+        Effect = "Allow",
+        Action = ["logs:*"],
         Resource = "*"
       }
     ]
   })
 }
 
-# ---------------- LAMBDA ----------------
-resource "aws_lambda_function" "auto_recover" {
-  function_name = "SumoTriggeredRecovery"
-  role          = aws_iam_role.lambda_exec.arn
+# ---------------- Lambda ----------------
+resource "aws_lambda_function" "app_lambda" {
+  function_name = "api-function"
+  role          = aws_iam_role.lambda_role.arn
   handler       = "lambda_function.lambda_handler"
-  runtime       = "python3.9"
-  filename      = "lambda_function.zip"
+  runtime       = "python3.12"
+
+  filename = "lambda.zip"
 
   environment {
     variables = {
-      INSTANCE_ID   = aws_instance.app.id
-      SNS_TOPIC_ARN = aws_sns_topic.alerts.arn
+      INSTANCE_ID   = "i-0510c100a8706cd17"
+      SNS_TOPIC_ARN = "arn:aws:sns:us-east-2:265145884108:monitoring-sns"
     }
   }
 }
-
-# ---------------- SNS → LAMBDA ----------------
-resource "aws_sns_topic_subscription" "lambda_sub" {
-  topic_arn = aws_sns_topic.alerts.arn
-  protocol  = "lambda"
-  endpoint  = aws_lambda_function.auto_recover.arn
-}
-
-# ---------------- ALLOW SNS TO TRIGGER LAMBDA ----------------
-resource "aws_lambda_permission" "allow_sns" {
-  statement_id  = "AllowSNSToInvokeLambda"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.auto_recover.function_name
-  principal     = "sns.amazonaws.com"
-  source_arn    = aws_sns_topic.alerts.arn
-} 
